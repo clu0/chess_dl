@@ -1,2 +1,3 @@
 .ipynb_checkpoints/*
-env/.ipynb_checkpoints/*
+state/.ipynb_checkpoints/*
+*/__pycache__
