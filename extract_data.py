@@ -6,7 +6,11 @@ import chess.pgn
 from state import *
 import numpy as np
 
-def create_dataset(path: str, chunksize: int = 10000, data_dir: str = "data") -> None:
+def create_dataset(
+    path: str,
+    chunksize: int = 10000,
+    data_dir: str = "data",
+    max_games: int = 1000) -> None:
     """
     return states, values, actions
     """
@@ -52,6 +56,8 @@ def create_dataset(path: str, chunksize: int = 10000, data_dir: str = "data") ->
                         values=np.array(values),
                         actions=np.array(actions)
                     )
+                    if n_games >= max_games:
+                        break
             else:
                 break
         except Exception:
