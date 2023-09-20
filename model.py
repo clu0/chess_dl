@@ -6,43 +6,26 @@ from torch.utils.data import Dataset
 from torch import nn
 
 
-class LargeNPZDataset(Dataset):
+class ChessDataset(Dataset):
     """
     Dataset class for loading chess data
-    We preprocess the data from pgn format to npz format. The data gets quite large,
-    so the training data will likely be split into a number of files.
-    
-    Expected data format:
-    - data_dir
-        - npz files
-    
+
     Each npz file will contain three arrays:
     states: (n_samples, 8 * 14 + 7, 8, 8)
     actions: (n_samples, 73, 8, 8)
     values: (n_samples, )
     """
-    def __init__(self, data_dir: str) -> None:
-        self.file_list = [os.path.join(data_dir, f) for f in os.listdir(data_dir)]
-        self.global_idx_to_file_idx = []
-        global_idx = 0
-        for file_path in self.file_list:
-            with np.load(file_path) as data:
-                local_length = len(data['values'])
-            self.global_idx_to_file_idx.extend([(file_path, i) for i in range(local_length)])
-            global_idx += local_length
+    def __init__(self, path: str) -> None:
+        data = np.load(path)
+        self.values = data["values"]
+        self.actions = data["actions"]
+        self.states = data["states"]
 
     def __len__(self):
-        return len(self.global_idx_to_file_idx)
+        return len(self.values)
     
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        file_path, local_idx = self.global_idx_to_file_idx[idx]
-        
-        data = np.load(file_path)
-        value = data["values"][local_idx]
-        action = data["actions"][local_idx]
-        state = data["states"][local_idx]
-
-        return state, action, value
+        return self.states[idx], self.actions[idx], self.values[idx]
 
 
 class ResBlock(nn.Module):

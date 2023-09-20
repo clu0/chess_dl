@@ -1,4 +1,4 @@
-from model import LargeNPZDataset, ChessNet
+from model import ChessDataset, ChessNet
 from torch.utils.data import DataLoader
 from torch import optim
 from torch import nn
@@ -25,9 +25,9 @@ if __name__ == "__main__":
     print(f"training with args {args}")
     print(f"using cuda? {torch.cuda.is_available()}")
 
-    chess_dataset = LargeNPZDataset(args.data_path)
-    chess_dataloader = DataLoader(
-        chess_dataset,
+    dataset = ChessDataset(args.data_path)
+    dataloader = DataLoader(
+        dataset,
         batch_size=args.batch_size,
         shuffle=True,
     )
@@ -50,8 +50,9 @@ if __name__ == "__main__":
         all_ce_loss = 0
         all_loss = 0
         n_loss = 0
-        for i, (state, action, value) in enumerate(chess_dataloader):
-            print(f"batch {i} out of {len(chess_dataloader)}")
+        # need to fix later
+        for i, (state, action, value) in enumerate(dataloader):
+            print(f"batch {i} out of {len(dataloader)}")
             state, action, value = state.to(args.device), action.to(args.device), value.to(args.device)
             
             optimizer.zero_grad()
