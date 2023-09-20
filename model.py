@@ -17,8 +17,8 @@ class LargeNPZDataset(Dataset):
         - npz files
     
     Each npz file will contain three arrays:
-    states: (n_samples, 8, 8, 8 * 14 + 7)
-    actions: (n_samples, 8, 8, 73)
+    states: (n_samples, 8 * 14 + 7, 8, 8)
+    actions: (n_samples, 73, 8, 8)
     values: (n_samples, )
     """
     def __init__(self, data_dir: str) -> None:
@@ -51,12 +51,12 @@ class ResBlock(nn.Module):
         res = [
             nn.Conv2d(c, c, kernel_size=3, padding=1),
             nn.BatchNorm2d(c),
-            nn.ReLU(True),
+            nn.ReLU(),
             nn.Conv2d(c, c, kernel_size=3, padding=1),
             nn.BatchNorm2d(c),
         ]
         self.res = nn.Sequential(*res)
-        self.relu = nn.ReLU(True)
+        self.relu = nn.ReLU()
     def forward(self, x):
         out = x + self.res(x)
         out = self.relu(x)
@@ -68,23 +68,23 @@ class ChessNet(nn.Module):
         model = [
             nn.Conv2d(in_c, n_c, kernel_size=3, padding=1),
             nn.BatchNorm2d(n_c),
-            nn.ReLU(True),
+            nn.ReLU(),
         ]
         for _ in range(depth):
             model += [ResBlock(n_c)]
         self.net = nn.Sequential(*model)
         self.policy = nn.Sequential(
             nn.Conv2d(n_c, n_a, kernel_size=1),
-            nn.ReLU(True)
+            nn.ReLU()
         )
         self.value_conv = nn.Sequential(
             nn.Conv2d(n_c, 1, kernel_size=1),
             nn.BatchNorm2d(1),
-            nn.ReLU(True)
+            nn.ReLU()
         )
         self.value = nn.Sequential(
             nn.Linear(width**2, n_hidden),
-            nn.ReLU(True),
+            nn.ReLU(),
             nn.Linear(n_hidden, 1),
             nn.Tanh()
         )
@@ -95,21 +95,3 @@ class ChessNet(nn.Module):
         v = self.value_conv(x)
         v = self.value(v.view(v.size(0),-1))
         return p, v
-
-
-class ChessLoss(nn.Module):
-    def __init__(self):
-        self.MSE = nn.MSELoss()
-        self.cross_ent = nn.CrossEntropyLoss()
-        
-    def forward(
-        self,
-        p_model: torch.Tensor,
-        v_model: torch.Tensor,
-        p_true: torch.Tensor,
-        v_true: torch.Tensor,
-    ):
-        p_model = p_model.reshape(p_model.shape[0], -1)
-        p_true = p_true.reshape(p_true.shape[0], -1)
-
-        return self.MSE(v_model, v_true) + self.cross_ent(p_model, p_true)

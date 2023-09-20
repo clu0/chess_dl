@@ -1,6 +1,8 @@
+from typing import Any
 import sys
 
 import numpy as np
+import numpy.typing as npt
 import torch
 import chess
 
@@ -123,7 +125,7 @@ def legal_moves_to_mask(legal_moves, color=chess.WHITE):
     We are flipping the boards when color is black
     So we will encode the move in the flipped direction
     """
-    mask = np.zeros([N, N, nMoves], dtype=np.int8)
+    mask = np.zeros([N, N, nMoves])
     for mv in legal_moves:
         from_sq = sq2gd(mv.from_square)
         to_sq = sq2gd(mv.to_square)
@@ -145,7 +147,7 @@ def legal_moves_to_mask(legal_moves, color=chess.WHITE):
             else:
                 move_ind = toQmv(diff)
         mask[from_sq[0], from_sq[1], move_ind] = 1
-    return mask
+    return mask.transpose((2, 0, 1))
 
 
 def sq2gd(sq):
@@ -290,7 +292,7 @@ def board2numpy(cboard):
     See alphazero paper for description of N, M, L
     """
     assert cboard.is_valid()
-    state = np.zeros((N, N, M+L), dtype=np.uint8)
+    state: npt.NDArray[Any] = np.zeros((N, N, M+L))
     # pieces
     piece2int = {p: i for i, p in enumerate("PNBRQKpnbrqk")}
     for i in range(N * N):
@@ -312,4 +314,4 @@ def board2numpy(cboard):
     state[..., M + 5] = cboard.has_queenside_castling_rights(chess.BLACK)
     # no-progress count, recorded in half-moves (100 half-moves means 50 moves rule kicks in)
     state[..., M + 6] = cboard.halfmove_clock
-    return state
+    return state.transpose((2, 0, 1))
