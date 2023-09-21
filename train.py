@@ -25,12 +25,14 @@ if __name__ == "__main__":
     print(f"training with args {args}")
     print(f"using cuda? {torch.cuda.is_available()}")
 
-    dataset = ChessDataset(args.data_path)
-    dataloader = DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-    )
+    datasets = [ChessDataset(os.path.join(args.data_path, f)) for f in os.listdir(args.data_path)]
+    dataloaders = [
+        DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+        ) for dataset in datasets
+    ]
     
     # number of in channels should be 8 * 14 + 7 = 119
     model = ChessNet(args.in_c, n_c=args.n_c, depth=args.depth, n_hidden=args.n_hidden)
@@ -51,24 +53,25 @@ if __name__ == "__main__":
         all_loss = 0
         n_loss = 0
         # need to fix later
-        for i, (state, action, value) in enumerate(dataloader):
-            print(f"batch {i} out of {len(dataloader)}")
-            state, action, value = state.to(args.device), action.to(args.device), value.to(args.device)
-            
-            optimizer.zero_grad()
-            p_model, v_model = model(state.float())
-            p_model = p_model.reshape(p_model.shape[0], -1)
-            action = action.reshape(action.shape[0], -1)
-            mse_loss = mse_loss_fn(v_model.reshape(-1), value.float())
-            ce_loss = ce_loss_fn(p_model, action.float())
-            loss: torch.Tensor = mse_loss + ce_loss
-            loss.backward()
-            optimizer.step()
-            
-            all_mse_loss += mse_loss.detach()
-            all_ce_loss += ce_loss.detach()
-            all_loss += loss.detach()
-            n_loss += 1
+        for i, dataloader in dataloaders:
+            print(f"training batch {i} out of {len(dataloaders)}")
+            for state, action, value in dataloader:
+                state, action, value = state.to(args.device), action.to(args.device), value.to(args.device)
+                
+                optimizer.zero_grad()
+                p_model, v_model = model(state.float())
+                p_model = p_model.reshape(p_model.shape[0], -1)
+                action = action.reshape(action.shape[0], -1)
+                mse_loss = mse_loss_fn(v_model.reshape(-1), value.float())
+                ce_loss = ce_loss_fn(p_model, action.float())
+                loss: torch.Tensor = mse_loss + ce_loss
+                loss.backward()
+                optimizer.step()
+                
+                all_mse_loss += mse_loss.detach()
+                all_ce_loss += ce_loss.detach()
+                all_loss += loss.detach()
+                n_loss += 1
         
         mse_losses.append(all_mse_loss / n_loss)
         ce_losses.append(all_ce_loss / n_loss)
