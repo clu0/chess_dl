@@ -11,7 +11,7 @@ class ChessDataset(Dataset):
     Dataset class for loading chess data
 
     Each npz file will contain three arrays:
-    states: (n_samples, 8 * 14 + 7, 8, 8)
+    states: (n_samples, T * 14 + 7, 8, 8)
     actions: (n_samples, 73, 8, 8)
     values: (n_samples, )
     """

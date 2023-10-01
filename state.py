@@ -286,7 +286,7 @@ def fromQmv(mv):
         return [dist,-dist]
     
 
-def board2numpy(cboard):
+def board2numpy(cboard: chess.Board) -> npt.NDArray[Any]:
     """_summary_
     convert a chess board object to a numpy array of shape (N,N,M+L)
     See alphazero paper for description of N, M, L

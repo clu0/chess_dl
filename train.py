@@ -15,7 +15,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", default="./models", help="model save dir")
     parser.add_argument("--loss_path", default="./losses", help="loss save dir")
     parser.add_argument("--batch_size", default=32, type=int, help="batch size")
-    parser.add_argument("--in_c", default=119, type=int, help="number of input channels in chess board state")
+    parser.add_argument("--in_c", default=21, type=int, help="number of input channels in chess board state, T * 14 + 7")
     parser.add_argument("--n_c", default=64, type=int, help="number of channels in resnet conv block")
     parser.add_argument("--depth", default=4, type=int, help="number of residual blocks")
     parser.add_argument("--n_hidden", default=64, type=int, help="number of hidden layers in final fully connected block")
@@ -34,7 +34,8 @@ if __name__ == "__main__":
         ) for dataset in datasets
     ]
     
-    # number of in channels should be 8 * 14 + 7 = 119
+    # number of in channels should be T * 14 + 7 = 119 when T = 8
+    # currently using T = 1, which means 21
     model = ChessNet(args.in_c, n_c=args.n_c, depth=args.depth, n_hidden=args.n_hidden)
     mse_loss_fn = nn.MSELoss()
     ce_loss_fn = nn.CrossEntropyLoss()
