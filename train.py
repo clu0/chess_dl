@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import os
 import argparse
+from time import time
 
 
 
@@ -14,6 +15,8 @@ if __name__ == "__main__":
     parser.add_argument("--data_path", default="./data", help="dir with data")
     parser.add_argument("--model_path", default="./models", help="model save dir")
     parser.add_argument("--loss_path", default="./losses", help="loss save dir")
+    parser.add_argument("--load_model_path", type=str, default=None, nargs='?', const=None, help="Optional path to load pretrained model from")
+    parser.add_argument("--n_prev_epoch", type=int, default=0, nargs='?', const=0, help="Num of epoch already trained if pretrained model is supplied")
     parser.add_argument("--batch_size", default=32, type=int, help="batch size")
     parser.add_argument("--in_c", default=21, type=int, help="number of input channels in chess board state, T * 14 + 7")
     parser.add_argument("--n_c", default=64, type=int, help="number of channels in resnet conv block")
@@ -25,18 +28,19 @@ if __name__ == "__main__":
     print(f"training with args {args}")
     print(f"using cuda? {torch.cuda.is_available()}")
 
-    datasets = [ChessDataset(os.path.join(args.data_path, f)) for f in os.listdir(args.data_path)]
-    dataloaders = [
-        DataLoader(
-            dataset,
-            batch_size=args.batch_size,
-            shuffle=True,
-        ) for dataset in datasets
-    ]
+    assert os.path.exists(args.data_path)
+    if args.load_model_path is not None:
+        assert os.path.exists(args.load_model_path)
+    if not os.path.exists(args.model_path): os.makedirs(args.model_path)
+    if not os.path.exists(args.loss_path): os.makedirs(args.loss_path)
+
+    dataset_paths = [os.path.join(args.data_path, f) for f in os.listdir(args.data_path)]
     
     # number of in channels should be T * 14 + 7 = 119 when T = 8
     # currently using T = 1, which means 21
     model = ChessNet(args.in_c, n_c=args.n_c, depth=args.depth, n_hidden=args.n_hidden)
+    if args.load_model_path is not None:
+        model.load_state_dict(torch.load(os.path.join(args.model_path, args.load_model_path)))
     mse_loss_fn = nn.MSELoss()
     ce_loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
@@ -49,13 +53,20 @@ if __name__ == "__main__":
     mse_losses, ce_losses, total_losses = [], [], []
     for epoch in range(args.n_epoch):
         print(f"starting epoch {epoch}")
+        start = time()
         all_mse_loss = 0
         all_ce_loss = 0
         all_loss = 0
         n_loss = 0
         # need to fix later
-        for i, dataloader in dataloaders:
-            print(f"training batch {i} out of {len(dataloaders)}")
+        for i, dataset_path in enumerate(dataset_paths):
+            dataset = ChessDataset(dataset_path)
+            dataloader = DataLoader(
+                dataset,
+                batch_size=args.batch_size,
+                shuffle=True,
+            )
+            print(f"training dataset {i} out of {len(dataset_paths)}")
             for state, action, value in dataloader:
                 state, action, value = state.to(args.device), action.to(args.device), value.to(args.device)
                 
@@ -78,11 +89,12 @@ if __name__ == "__main__":
         ce_losses.append(all_ce_loss / n_loss)
         total_losses.append(all_loss / n_loss)
 
-        print(f"epoch {epoch}, mse loss {mse_losses[-1]}, ce loss {ce_losses[-1]}, loss {total_losses[-1]}")
-        if epoch + 1 % 20 == 0:
-            torch.save(model.state_dict(), os.path.join(args.model_path, f"model_{epoch}.pth"))
+        print(f"epoch {epoch}, mse loss {mse_losses[-1]}, ce loss {ce_losses[-1]}, loss {total_losses[-1]}, time {time() - start}")
+        if (epoch + 1) % 20 == 0:
+            print(f"epoch {epoch + 1}, saving model")
+            torch.save(model.state_dict(), os.path.join(args.model_path, f"model_{epoch + args.n_prev_epoch + 1}.pth"))
     
-    np.save(os.path.join(args.loss_path, "mse_loss.npy"), mse_losses)
-    np.save(os.path.join(args.loss_path, "ce_loss.npy"), ce_losses)
-    np.save(os.path.join(args.loss_path, "total_loss.npy"), total_losses)
+            np.save(os.path.join(args.loss_path, "mse_loss.npy"), torch.tensor(mse_losses).to('cpu'))
+            np.save(os.path.join(args.loss_path, "ce_loss.npy"), torch.tensor(ce_losses).to('cpu'))
+            np.save(os.path.join(args.loss_path, "total_loss.npy"), torch.tensor(total_losses).to('cpu'))
     

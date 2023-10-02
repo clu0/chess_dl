@@ -10,7 +10,7 @@ def create_dataset(
     path: str,
     chunksize: int = 10000,
     data_dir: str = "data",
-    max_games: int = 1000) -> None:
+    max_games: int = 10000000) -> None:
     """
     return states, values, actions
     """
@@ -60,6 +60,7 @@ def create_dataset(
                     values=np.array(values),
                     actions=np.array(actions)
                 )
+                states, values, actions = [], [], []
                 if n_games >= max_games:
                     break
         else:
