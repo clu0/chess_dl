@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 import sys
 
 import numpy as np
@@ -29,56 +29,47 @@ T = 8
 nMoves = 73 # 56 Q moves, 8 K moves, 9 P underpromotions, 3 options for 3 directions
 EPS = 1e-8
 
-class ChessGame():
-    def __init__(self):
-        self.history = torch.zeros([1, N, N, M+L])
-        self.currentBoard = torch.zeros([N, N, M*T + L])
+class ChessGame:
+    def __init__(self, board: Optional[chess.Board] = None) -> None:
+        self.board: chess.Board = board if board is not None else chess.Board()
+        
 
-    def setupGame(self, board=None):
-        if not board:
-            board = setup_board()
-
-        self.history[0, ...] = board
-        self.currentBoard[:, :, (M*(T-1)):] = board
-        print("setting up new game")
-        print("starting position")
-        print(self.history[-1,...])
-
-def setup_board():
-    # the board is 8x8, the order of the dims will be
-    # 0-5: P1 pieces: P N B R Q K
-    # 6-11: P2 pieces
-    # 12-13: 2 repetitions
-    # 14-20: color, Total moves, P1 castling, P2 castling, no-progress
-    # the board will be oriented to the perspective of the current player
-    board = np.zeros((N, N, M+L), dtype=np.int8)
-
-    # setup pieces
-    # we will denote say e6 with index (2,4), so the board matrix actually looks like the real chess board
-    #P1
-    board[1,:,0]=1 #P
-    board[0,1,1]=1 #N
-    board[0,6,1]=1 #N
-    board[0,2,2]=1 #B
-    board[0,5,2]=1 #B
-    board[0,0,3]=1 #R
-    board[0,7,3]=1 #R
-    board[0,3,4]=1 #Q
-    board[0,4,5]=1 #K
-    #P2
-    board[6,:,0+6]=1
-    board[7,1,1+6]=1
-    board[7,6,1+6]=1
-    board[7,2,2+6]=1
-    board[7,5,2+6]=1
-    board[7,0,3+6]=1
-    board[7,7,3+6]=1
-    board[7,3,4+6]=1
-    board[7,4,5+6]=1
-    # everything else is zero at the start
-    # except castling rights, which are set to 1 below
-    board[..., (M+2):(M+6)] = 1
-    return board
+# old method that sets up a board by hand
+# def setup_board():
+#     # the board is 8x8, the order of the dims will be
+#     # 0-5: P1 pieces: P N B R Q K
+#     # 6-11: P2 pieces
+#     # 12-13: 2 repetitions
+#     # 14-20: color, Total moves, P1 castling, P2 castling, no-progress
+#     # the board will be oriented to the perspective of the current player
+#     board = np.zeros((N, N, M+L), dtype=np.int8)
+# 
+#     # setup pieces
+#     # we will denote say e6 with index (2,4), so the board matrix actually looks like the real chess board
+#     #P1
+#     board[1,:,0]=1 #P
+#     board[0,1,1]=1 #N
+#     board[0,6,1]=1 #N
+#     board[0,2,2]=1 #B
+#     board[0,5,2]=1 #B
+#     board[0,0,3]=1 #R
+#     board[0,7,3]=1 #R
+#     board[0,3,4]=1 #Q
+#     board[0,4,5]=1 #K
+#     #P2
+#     board[6,:,0+6]=1
+#     board[7,1,1+6]=1
+#     board[7,6,1+6]=1
+#     board[7,2,2+6]=1
+#     board[7,5,2+6]=1
+#     board[7,0,3+6]=1
+#     board[7,7,3+6]=1
+#     board[7,3,4+6]=1
+#     board[7,4,5+6]=1
+#     # everything else is zero at the start
+#     # except castling rights, which are set to 1 below
+#     board[..., (M+2):(M+6)] = 1
+#     return board
 
 def board_str(board):
     """
@@ -286,7 +277,7 @@ def fromQmv(mv):
         return [dist,-dist]
     
 
-def board2numpy(cboard: chess.Board) -> npt.NDArray[Any]:
+def board2numpy(cboard: chess.Board, color: chess.Color = chess.WHITE) -> npt.NDArray[Any]:
     """_summary_
     convert a chess board object to a numpy array of shape (N,N,M+L)
     See alphazero paper for description of N, M, L
@@ -314,4 +305,5 @@ def board2numpy(cboard: chess.Board) -> npt.NDArray[Any]:
     state[..., M + 5] = cboard.has_queenside_castling_rights(chess.BLACK)
     # no-progress count, recorded in half-moves (100 half-moves means 50 moves rule kicks in)
     state[..., M + 6] = cboard.halfmove_clock
-    return state.transpose((2, 0, 1))
+    state = state.transpose((2, 0, 1))
+    return state if color == chess.WHITE else np.flip(state, axis=(0, 1))
