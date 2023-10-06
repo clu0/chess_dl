@@ -70,7 +70,7 @@ EPS = 1e-8
 #     board[..., (M+2):(M+6)] = 1
 #     return board
 
-def board_str(board):
+def board_str(board, color: chess.Color = chess.WHITE):
     """
     takes a board tensor or array and returns a string representation of the board
     """
@@ -84,19 +84,14 @@ def board_str(board):
     for i in range(6):
         for j in range(2):
             bSlice = board[...,j*6+i]
-            #if i > 0:
-            #    sys.exit(
-            if j == 0:
-                curBoard[bSlice == 1] = p[i]
+            if color:
+                upper = j == 0
             else:
-                curBoard[bSlice == 1] = p[i].lower()
+                upper = j == 1
+            curBoard[bSlice == 1] = p[i] if upper else p[i].lower()
             pieceCount[bSlice == 1] += 1
     if np.sum(pieceCount > 1) > 0:
         debug_print(f"the piece counts are {pieceCount}, and there is more than one piece in a location!")
-    #curBoard = np.flip(curBoard, 0)
-    #print("state of the board representation:")
-    #for i in range(N):
-    #    print(' '.join(curBoard[i,:]))
     return '\n'.join([' '.join(curBoard[i,:]) for i in reversed(range(N))])
 
 
@@ -292,37 +287,49 @@ def fromQmv(mv):
         return [dist,-dist]
     
 
-def board2numpy(cboard: chess.Board) -> npt.NDArray[Any]:
-    """_summary_
-    convert a chess board object to a numpy array of shape (M+L, N, N)
-    See alphazero paper for description of N, M, L
+def board2numpy(board: chess.Board) -> npt.NDArray[Any]:
     """
-    assert cboard.is_valid()
-    state: npt.NDArray[Any] = np.zeros((N, N, M+L))  # old shape, transposed at the end
+    convert a chess board object to a numpy array of shape (M+L, N, N)
+    N, M, L come from the alphazero paper:
+    - N = 8 is the dimension of the board
+    - M = 6 + 6 + 2 are binary planes, representing current player's pieces, opponent's pieces, and repetition counts
+    - L = 1 + 1 + 2 + 2 + 1 are color, total move count, current player's castling, opponent's castling, and no-progress counts
+    
+    Notice that the first 6 planes have to be the current player's pieces, so when color is black,
+    we not only need to use the first 6 planes to represent black pieces, 
+    but we also need to do a flip on the two final axis that represent the chess board
+    """
+    assert board.is_valid()
+    state: npt.NDArray[Any] = np.zeros((M+L, N, N))
     # pieces
-    piece2int = {p: i for i, p in enumerate("PNBRQKpnbrqk")}
+    piece_string = "PNBRQKpnbrqk" if board.turn == chess.WHITE else "pnbrqkPNBRQK"
+    piece2int = {p: i for i, p in enumerate(piece_string)}
     for i in range(N * N):
-        piece = cboard.piece_at(i)
+        piece = board.piece_at(i)
         if piece is not None:
-            state[i // N, i % N, piece2int[piece.symbol()]] = 1
-    color = 1 - int(cboard.turn)  # 0 for while, 1 for black
-    # repetitions, set plane M-2 = 1 if not 2 repetitions, and M-1 = 1 if 2 move repetition
-    state[..., M - 2 + int(cboard.is_repetition(2))] = 1
+            state[piece2int[piece.symbol()], i // N, i % N] = 1
+    if board.turn == chess.BLACK:
+        state = np.flip(state, axis=(1, 2))
+
+    # constant planes
+    # repetitions: M-2 plane is for 2 reps, M-1 for 3 reps
+    state[M - 2, ...] = board.is_repetition(2)
+    state[M - 1, ...] = board.is_repetition(3)
     # color
-    state[..., M] = color
+    color = 1 - int(board.turn)  # 0 for while, 1 for black
+    state[M, ...] = color
     # total moves
-    state[..., M + 1] = cboard.fullmove_number
+    state[M + 1, ...] = board.fullmove_number
     # P1 castling
-    state[..., M + 2] = cboard.has_kingside_castling_rights(chess.WHITE)
-    state[..., M + 3] = cboard.has_queenside_castling_rights(chess.WHITE)
+    state[M + 2, ...] = board.has_kingside_castling_rights(board.turn)
+    state[M + 3, ...] = board.has_queenside_castling_rights(board.turn)
     # P2 castling
-    state[..., M + 4] = cboard.has_kingside_castling_rights(chess.BLACK)
-    state[..., M + 5] = cboard.has_queenside_castling_rights(chess.BLACK)
+    opponent_turn = chess.BLACK if board.turn == chess.WHITE else chess.WHITE
+    state[M + 4, ...] = board.has_kingside_castling_rights(opponent_turn)
+    state[M + 5, ...] = board.has_queenside_castling_rights(opponent_turn)
     # no-progress count, recorded in half-moves (100 half-moves means 50 moves rule kicks in)
-    state[..., M + 6] = cboard.halfmove_clock
-    if cboard.turn == chess.BLACK:
-        state = np.flip(state, axis=(0, 1))
-    return state.transpose((2, 0, 1))
+    state[M + 6, ...] = board.halfmove_clock
+    return state
 
 def mask_to_lists(move_mask: npt.NDArray[Any], board: chess.Board) -> Tuple[List[chess.Move], npt.NDArray[np.float_]]:
     """
