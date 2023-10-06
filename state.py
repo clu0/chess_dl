@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Tuple, List, Union
 import sys
 
 import numpy as np
@@ -29,10 +29,9 @@ T = 8
 nMoves = 73 # 56 Q moves, 8 K moves, 9 P underpromotions, 3 options for 3 directions
 EPS = 1e-8
 
-class ChessGame:
-    def __init__(self, board: Optional[chess.Board] = None) -> None:
-        self.board: chess.Board = board if board is not None else chess.Board()
-        
+# class ChessGame:
+#     def __init__(self, board: Optional[chess.Board] = None) -> None:
+#         self.board: chess.Board = board if board is not None else chess.Board()
 
 # old method that sets up a board by hand
 # def setup_board():
@@ -77,6 +76,7 @@ def board_str(board):
     """
     if torch.is_tensor(board):
         board = board.numpy()
+    board = board.transpose((1, 2, 0))
     curBoard = np.empty((N,N), dtype=str)
     curBoard[:] = '.'
     pieceCount = np.zeros((N,N))
@@ -104,10 +104,10 @@ def board_str(board):
 # gets the list of legal moves from the chess package, 
 # and converts that into a binary mask in the shape of the action tensor for the DL engine, of dimension N*N*nMoves
 
-def legal_moves_to_mask(legal_moves, color=chess.WHITE):
+def legal_moves_to_mask(legal_moves, color=chess.WHITE) -> npt.NDArray[np.float_]:
     """
     takes input: list of Move objects
-    returns a numpy binary mask of shape (N, N, nMoves)
+    returns a numpy binary mask of shape (nMoves, N, N)
     where 1 indicates a legal move
     
     See alphazero paper for description of nMoves (73) and how it is decoded
@@ -116,7 +116,7 @@ def legal_moves_to_mask(legal_moves, color=chess.WHITE):
     We are flipping the boards when color is black
     So we will encode the move in the flipped direction
     """
-    mask = np.zeros([N, N, nMoves])
+    mask = np.zeros([N, N, nMoves])  # old implementation, to be transposed later
     for mv in legal_moves:
         from_sq = sq2gd(mv.from_square)
         to_sq = sq2gd(mv.to_square)
@@ -196,25 +196,22 @@ def sign(x):
     else:
         return 1
 
-def index_to_move(ind, is_pawn=False, color=chess.WHITE):
+def index_to_move(ind: npt.NDArray[np.int_], is_pawn=False, color=chess.WHITE) -> chess.Move:
     """
-    Convert a np binary index array, with 3 indices, indexing the (N, N, nMoves) possible moves,
+    Convert a np binary index array, with 3 indices, indexing the (nMoves, N, N) possible moves,
     into a chess.Move object
     
     We will flip the move direction when color is black
     """
+    ind = ind[[1, 2, 0]] # transpose so the index is for (N, N, nMoves)
     from_sq = ind[:2].copy()
     to_sq = ind[:2].copy()
     if ind[2] >= 64:
         direction = int((ind[2]-64)/3) - 1 # -1, 0 or 1
         promotion = ((ind[2]-64) % 3) + 2
-        #if color == chess.WHITE:
         to_sq[0] += 1 # - because the index for board rows is reversed
-        #else:
-        #    to_sq[0] -= 1
         to_sq[1] += direction
     else:
-        #print(f"not an underpromotion, from sq is {ind[:2]}")
         if ind[2] >= 56:
             diff = fromNmv(ind[2]-56)
         else:
@@ -231,6 +228,24 @@ def index_to_move(ind, is_pawn=False, color=chess.WHITE):
         from_sq = 7 - from_sq
         to_sq = 7 - to_sq
     return chess.Move(gd2sq(from_sq), gd2sq(to_sq), promotion=promotion)
+
+def index_board_to_move(ind: npt.NDArray[np.int_], board: chess.Board) -> chess.Move:
+    """
+    take a len 3 numpy index (for (nMoves, N, N)) and a board and returns the corresponding move
+    """
+    board_np = board2numpy(board)
+    piece_inds = board_np[:12, ind[1], ind[2]]
+    piece_ind = np.where(piece_inds == 1)[0].item()
+    piece = (piece_ind % 6) + 1
+    return index_to_move(ind, piece == 1, board.turn)
+
+def check_is_pawn(ind: npt.NDArray[np.int_], board: Union[npt.NDArray[Any], chess.Board]) -> bool:
+    board_np = board if isinstance(board, np.ndarray) else board2numpy(board)
+    piece_inds = board_np[:12, ind[1], ind[2]]
+    piece_ind = np.where(piece_inds == 1)[0].item()
+    piece = (piece_ind % 6) + 1
+    return piece == 1
+    
 
     
 def check_in_bound(sq):
@@ -277,13 +292,13 @@ def fromQmv(mv):
         return [dist,-dist]
     
 
-def board2numpy(cboard: chess.Board, color: chess.Color = chess.WHITE) -> npt.NDArray[Any]:
+def board2numpy(cboard: chess.Board) -> npt.NDArray[Any]:
     """_summary_
-    convert a chess board object to a numpy array of shape (N,N,M+L)
+    convert a chess board object to a numpy array of shape (M+L, N, N)
     See alphazero paper for description of N, M, L
     """
     assert cboard.is_valid()
-    state: npt.NDArray[Any] = np.zeros((N, N, M+L))
+    state: npt.NDArray[Any] = np.zeros((N, N, M+L))  # old shape, transposed at the end
     # pieces
     piece2int = {p: i for i, p in enumerate("PNBRQKpnbrqk")}
     for i in range(N * N):
@@ -291,8 +306,8 @@ def board2numpy(cboard: chess.Board, color: chess.Color = chess.WHITE) -> npt.ND
         if piece is not None:
             state[i // N, i % N, piece2int[piece.symbol()]] = 1
     color = 1 - int(cboard.turn)  # 0 for while, 1 for black
-    # repetitions
-    state[..., M-2+color] = cboard.is_repetition(2)
+    # repetitions, set plane M-2 = 1 if not 2 repetitions, and M-1 = 1 if 2 move repetition
+    state[..., M - 2 + int(cboard.is_repetition(2))] = 1
     # color
     state[..., M] = color
     # total moves
@@ -305,5 +320,23 @@ def board2numpy(cboard: chess.Board, color: chess.Color = chess.WHITE) -> npt.ND
     state[..., M + 5] = cboard.has_queenside_castling_rights(chess.BLACK)
     # no-progress count, recorded in half-moves (100 half-moves means 50 moves rule kicks in)
     state[..., M + 6] = cboard.halfmove_clock
-    state = state.transpose((2, 0, 1))
-    return state if color == chess.WHITE else np.flip(state, axis=(0, 1))
+    if cboard.turn == chess.BLACK:
+        state = np.flip(state, axis=(0, 1))
+    return state.transpose((2, 0, 1))
+
+def mask_to_lists(move_mask: npt.NDArray[Any], board: chess.Board) -> Tuple[List[chess.Move], npt.NDArray[np.float_]]:
+    """
+    Given a probability mask P over possible moves of shape (nMoves, N, N)
+    converts it into two lists, the first is a list of possible moves
+    and the second is the corresponding list of probabilities
+    """
+    assert move_mask.shape == (nMoves, N, N)
+    mv_list = []
+    prob_list = []
+    board_np = board2numpy(board)
+    xs, ys, zs = np.nonzero(move_mask)
+    for x, y, z in zip(xs, ys, zs):
+        prob_list.append(move_mask[x, y, z])
+        ind = np.array([x, y, z])
+        mv_list.append(index_to_move(ind, check_is_pawn(ind, board_np), board.turn))
+    return mv_list, np.asarray(prob_list)

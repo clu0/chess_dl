@@ -42,10 +42,7 @@ def create_dataset(
                 # not including history
                 # cur_state = np.concatenate([past_states, board], axis=0)
                 next_move = legal_moves_to_mask([mv], cboard.turn)
-                if cboard.turn == chess.WHITE:
-                    states.append(cur_state)
-                else:
-                    states.append(np.flip(cur_state, axis=(0, 1)))
+                states.append(cur_state)
                 values.append(game_value)
                 actions.append(next_move)
                 cboard.push(mv)
