@@ -60,10 +60,11 @@ if __name__ == "__main__":
         train_mse_loss = 0
         train_ce_loss = 0
         train_loss = 0
+        train_n_loss = 0
         val_mse_loss = 0
         val_ce_loss = 0
         val_loss = 0
-        n_loss = 0
+        val_n_loss = 0
         for i, dataset_path in enumerate(dataset_paths):
             train_dataset, val_dataset = make_train_val_datasets(dataset_path)
             train_dataloader = DataLoader(
@@ -94,7 +95,8 @@ if __name__ == "__main__":
                 train_mse_loss += mse_loss.detach().to('cpu')
                 train_ce_loss += ce_loss.detach().to('cpu')
                 train_loss += loss.detach().to('cpu')
-                n_loss += 1
+                train_n_loss += 1
+                optimizer.zero_grad()
             
             model.eval()
             with torch.no_grad():
@@ -111,15 +113,19 @@ if __name__ == "__main__":
                     val_mse_loss += mse_loss.detach().to('cpu')
                     val_ce_loss += ce_loss.detach().to('cpu')
                     val_loss += loss.detach().to('cpu')
-                    n_loss += 1
+                    val_n_loss += 1
+            del train_dataloader
+            del train_dataset
+            del val_dataloader
+            del val_dataset
 
 
-        train_mse_losses.append(train_mse_loss / n_loss)
-        train_ce_losses.append(train_ce_loss / n_loss)
-        train_total_losses.append(train_loss / n_loss)
-        val_mse_losses.append(val_mse_loss / n_loss)
-        val_ce_losses.append(val_ce_loss / n_loss)
-        val_total_losses.append(val_loss / n_loss)
+        train_mse_losses.append(train_mse_loss / train_n_loss)
+        train_ce_losses.append(train_ce_loss / train_n_loss)
+        train_total_losses.append(train_loss / train_n_loss)
+        val_mse_losses.append(val_mse_loss / val_n_loss)
+        val_ce_losses.append(val_ce_loss / val_n_loss)
+        val_total_losses.append(val_loss / val_n_loss)
 
         print(f"epoch {epoch + args.n_prev_epoch}, mse loss {train_mse_losses[-1]}, ce loss {train_ce_losses[-1]}, loss {train_total_losses[-1]}, time {time() - start}")
         print(f"epoch {epoch + args.n_prev_epoch}, val mse loss {val_mse_losses[-1]}, ce loss {val_ce_losses[-1]}, loss {val_total_losses[-1]}, time {time() - start}")
